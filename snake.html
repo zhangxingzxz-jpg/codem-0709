@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>贪吃蛇 · Snake</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #1a1d29;
+    color: #e8e8ef;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+    padding: 16px;
+  }
+  h1 { font-size: 22px; letter-spacing: 2px; }
+  .hud {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-size: 15px;
+    color: #9aa3b5;
+  }
+  .hud b { color: #6ee7a0; font-size: 18px; margin-left: 6px; }
+  .board-wrap { position: relative; }
+  canvas {
+    background: #232736;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    display: block;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(15,17,26,.82);
+    border-radius: 10px;
+    text-align: center;
+  }
+  .overlay.show { display: flex; }
+  .overlay .title { font-size: 24px; font-weight: 700; color: #ff7b72; }
+  .overlay .sub { font-size: 14px; color: #9aa3b5; }
+  button {
+    margin-top: 6px;
+    padding: 9px 28px;
+    border: none;
+    border-radius: 20px;
+    background: #6ee7a0;
+    color: #16241c;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:hover { background: #5ad18f; }
+  .tips { font-size: 13px; color: #6b7385; line-height: 1.7; text-align: center; }
+  kbd {
+    background: #2c3142;
+    border: 1px solid #3d4357;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+  <h1>贪吃蛇</h1>
+  <div class="hud">
+    <span>得分<b id="score">0</b></span>
+    <span>最高分<b id="best">0</b></span>
+    <span>速度<b id="level">1</b></span>
+  </div>
+  <div class="board-wrap">
+    <canvas id="game" width="400" height="400"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="title" id="ovTitle">游戏结束</div>
+      <div class="sub" id="ovSub">按 空格 或点击按钮重新开始</div>
+      <button id="restart">再来一局</button>
+    </div>
+  </div>
+  <div class="tips">
+    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ·
+    <kbd>空格</kbd> 暂停 / 继续
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var scoreEl = document.getElementById("score");
+  var bestEl = document.getElementById("best");
+  var levelEl = document.getElementById("level");
+  var overlay = document.getElementById("overlay");
+  var ovTitle = document.getElementById("ovTitle");
+  var ovSub = document.getElementById("ovSub");
+  var restartBtn = document.getElementById("restart");
+
+  var COLS = 20, ROWS = 20, CELL = 20;          // 400x400 棋盘
+  var BASE_INTERVAL = 150;                       // 初始每步毫秒
+  var MIN_INTERVAL = 60;
+  var SPEED_STEP = 10;                           // 每吃 5 个食物加速一档
+
+  var snake, dir, nextDir, food, score, best, interval, timer, state;
+
+  best = Number(localStorage.getItem("snake_best") || 0);
+  bestEl.textContent = best;
+
+  function reset() {
+    snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+    dir = { x: 1, y: 0 };
+    nextDir = dir;
+    score = 0;
+    interval = BASE_INTERVAL;
+    food = spawnFood();
+    state = "running";
+    scoreEl.textContent = "0";
+    levelEl.textContent = "1";
+    overlay.classList.remove("show");
+    clearInterval(timer);
+    timer = setInterval(tick, interval);
+  }
+
+  function spawnFood() {
+    var occupied = {};
+    snake.forEach(function (s) { occupied[s.x + "," + s.y] = true; });
+    var p;
+    do {
+      p = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    } while (occupied[p.x + "," + p.y]);
+    return p;
+  }
+
+  function tick() {
+    if (state !== "running") return;
+
+    dir = nextDir;
+    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // 撞墙或撞自己
+    var hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
+    var hitSelf = snake.some(function (s) { return s.x === head.x && s.y === head.y; });
+    if (hitWall || hitSelf) {
+      gameOver();
+      return;
+    }
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+      score++;
+      scoreEl.textContent = score;
+      if (score % 5 === 0 && interval - SPEED_STEP >= MIN_INTERVAL) {
+        interval -= SPEED_STEP;
+        clearInterval(timer);
+        timer = setInterval(tick, interval);
+      }
+      levelEl.textContent = Math.floor((BASE_INTERVAL - interval) / SPEED_STEP) + 1;
+      food = spawnFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+  }
+
+  function gameOver() {
+    state = "over";
+    clearInterval(timer);
+    if (score > best) {
+      best = score;
+      localStorage.setItem("snake_best", String(best));
+      bestEl.textContent = best;
+      ovTitle.textContent = "新纪录！";
+      ovSub.textContent = "本局得分 " + score + " 分";
+    } else {
+      ovTitle.textContent = "游戏结束";
+      ovSub.textContent = "本局得分 " + score + " 分";
+    }
+    overlay.classList.add("show");
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 网格
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    for (var i = 1; i < COLS; i++) {
+      ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, ROWS * CELL); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(COLS * CELL, i * CELL); ctx.stroke();
+    }
+
+    // 食物
+    ctx.fillStyle = "#ff7b72";
+    ctx.beginPath();
+    ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 蛇身（头亮尾暗）
+    snake.forEach(function (s, idx) {
+      var t = idx / Math.max(snake.length - 1, 1);
+      ctx.fillStyle = idx === 0 ? "#6ee7a0" : "rgba(110,231,160," + (1 - t * 0.6).toFixed(2) + ")";
+      roundRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2, 5);
+    });
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  var KEY_MAP = {
+    ArrowUp: { x: 0, y: -1 },  KeyW: { x: 0, y: -1 },
+    ArrowDown: { x: 0, y: 1 }, KeyS: { x: 0, y: 1 },
+    ArrowLeft: { x: -1, y: 0 }, KeyA: { x: -1, y: 0 },
+    ArrowRight: { x: 1, y: 0 }, KeyD: { x: 1, y: 0 }
+  };
+
+  document.addEventListener("keydown", function (e) {
+    // 空格：暂停 / 继续 / 重开
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (state === "over") { reset(); return; }
+      if (state === "running") {
+        state = "paused";
+        ovTitle.textContent = "已暂停";
+        ovSub.textContent = "按 空格 继续";
+        overlay.classList.add("show");
+      } else if (state === "paused") {
+        state = "running";
+        overlay.classList.remove("show");
+      }
+      return;
+    }
+
+    var d = KEY_MAP[e.code];
+    if (!d) return;
+    e.preventDefault();
+    // 禁止 180 度掉头
+    if (d.x === -dir.x && d.y === -dir.y) return;
+    nextDir = d;
+  });
+
+  restartBtn.addEventListener("click", reset);
+
+  reset();
+  draw();
+})();
+</script>
+</body>
+</html>

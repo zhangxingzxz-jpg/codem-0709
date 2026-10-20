@@ -30,6 +30,8 @@
   }
   .hud b { color: #6ee7a0; font-size: 18px; margin-left: 6px; }
   #p2wrap b { color: #6cb4f0; }
+  #p3wrap b { color: #f0c46c; }
+  #p4wrap b { color: #c46cf0; }
   #weatherEl { font-size: 15px; }
   .board-wrap { position: relative; }
   canvas {
@@ -67,7 +69,7 @@
     cursor: pointer;
   }
   button:hover { background: #5ad18f; }
-  .menu-row { display: none; gap: 12px; }
+  .menu-row { display: none; gap: 12px; flex-wrap: wrap; justify-content: center; }
   .ghost { background: #2c3142; color: #e8e8ef; }
   .ghost:hover { background: #3d4357; }
   .chk {
@@ -128,6 +130,8 @@
   <div class="hud">
     <span><span id="p1label">得分</span><b id="score">0</b></span>
     <span id="p2wrap" style="display:none">P2<b id="score2">0</b></span>
+    <span id="p3wrap" style="display:none">P3<b id="score3">0</b></span>
+    <span id="p4wrap" style="display:none">P4<b id="score4">0</b></span>
     <span id="bestwrap">最高分<b id="best">0</b></span>
     <span>速度<b id="level">1</b></span>
     <span id="weatherEl">☀️ 晴</span>
@@ -140,7 +144,9 @@
       <div class="sub" id="ovSub">选择模式开始</div>
       <div class="menu-row" id="menuGroup">
         <button id="btnSingle">单人模式</button>
-        <button id="btnVersus">双人对战</button>
+        <button id="btnVersus">双人</button>
+        <button id="btnTriple">三人</button>
+        <button id="btnQuad">四人</button>
       </div>
       <label class="chk" id="weatherLabel">
         <input type="checkbox" id="weatherToggle" checked /> 天气模式：晴 / 雨 / 雾 / 雪 / 风
@@ -160,7 +166,7 @@
   </div>
   <div class="tips">
     单人：<kbd>↑↓←→</kbd> / <kbd>WASD</kbd> / 滑动 / 虚拟键盘 移动，<kbd>空格</kbd> 或点击画面 暂停 ·
-    双人对战：P1 用方向键，P2 用 <kbd>WASD</kbd> · 天气模式随机切换五种天气
+    多人对战：P1 方向键，P2 <kbd>WASD</kbd>，P3 <kbd>IJKL</kbd>，P4 小键盘 <kbd>8456</kbd> · 淘汰制，最后存活者获胜 · 天气模式随机切换五种天气
   </div>
 
 <script>
@@ -171,6 +177,8 @@
   var ctx = canvas.getContext("2d");
   var scoreEl = document.getElementById("score");
   var score2El = document.getElementById("score2");
+  var score3El = document.getElementById("score3");
+  var score4El = document.getElementById("score4");
   var bestEl = document.getElementById("best");
   var levelEl = document.getElementById("level");
   var weatherEl = document.getElementById("weatherEl");
@@ -183,10 +191,14 @@
   var weatherToggle = document.getElementById("weatherToggle");
   var btnSingle = document.getElementById("btnSingle");
   var btnVersus = document.getElementById("btnVersus");
+  var btnTriple = document.getElementById("btnTriple");
+  var btnQuad = document.getElementById("btnQuad");
   var restartBtn = document.getElementById("restart");
   var backMenuBtn = document.getElementById("backMenu");
   var p1Label = document.getElementById("p1label");
   var p2Wrap = document.getElementById("p2wrap");
+  var p3Wrap = document.getElementById("p3wrap");
+  var p4Wrap = document.getElementById("p4wrap");
   var bestWrap = document.getElementById("bestwrap");
 
   var W = canvas.width, H = canvas.height;
@@ -212,9 +224,11 @@
   // ---- 运行状态 ----
   var state = "menu";                            // menu | running | paused | over
   var mode = "single";
+  var playerCount = 1;
   var weatherOn = true;
   var players = [];
-  var food = null;
+  var foods = [];
+  var targetFoodCount = 1;
   var totalEaten = 0;
   var weather = { type: "sunny", windDir: DIRS.right };
   var weatherMs = 0;
@@ -293,24 +307,25 @@
   var fogCtx = fogCv.getContext("2d");
 
   // ---- 玩家 / 局面 ----
-  function makePlayer(snake, dir, color, rgbaPrefix) {
-    return { snake: snake, dir: dir, nextDir: dir, lagged: dir, score: 0, alive: true, head: null, color: color, rgba: rgbaPrefix };
+  var P_CONF = [
+    { snake: [{ x: 4, y: 10 }, { x: 3, y: 10 }, { x: 2, y: 10 }],  dir: DIRS.right, color: "#6ee7a0", rgba: "rgba(110,231,160," },
+    { snake: [{ x: 15, y: 9 }, { x: 16, y: 9 }, { x: 17, y: 9 }],  dir: DIRS.left,  color: "#6cb4f0", rgba: "rgba(108,180,240," },
+    { snake: [{ x: 10, y: 2 }, { x: 10, y: 1 }, { x: 10, y: 0 }],  dir: DIRS.down,  color: "#f0c46c", rgba: "rgba(240,196,108," },
+    { snake: [{ x: 9, y: 17 }, { x: 9, y: 18 }, { x: 9, y: 19 }],  dir: DIRS.up,    color: "#c46cf0", rgba: "rgba(196,108,240," }
+  ];
+
+  function makePlayer(conf) {
+    return { snake: conf.snake, dir: conf.dir, nextDir: conf.dir, lagged: conf.dir, score: 0, alive: true, dying: false, head: null, color: conf.color, rgba: conf.rgba };
   }
 
-  function startGame(m) {
-    mode = m;
-    players = [makePlayer(
-      [{ x: 5, y: 10 }, { x: 4, y: 10 }, { x: 3, y: 10 }],
-      DIRS.right, "#6ee7a0", "rgba(110,231,160,"
-    )];
-    if (mode === "versus") {
-      players.push(makePlayer(
-        [{ x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }],
-        DIRS.left, "#6cb4f0", "rgba(108,180,240,"
-      ));
-    }
+  function startGame(count) {
+    playerCount = count;
+    mode = count > 1 ? "versus" : "single";
+    players = P_CONF.slice(0, count).map(makePlayer);
     totalEaten = 0;
-    food = spawnFood();
+    foods = [];
+    targetFoodCount = count >= 4 ? 2 : 1;
+    refillFoods();
     weatherMs = 0;
     gustFlashTs = -9999;
     if (weatherOn) setWeather(randomWeatherType(), true);
@@ -323,21 +338,17 @@
   }
 
   function setupHudForMode() {
-    if (mode === "versus") {
-      p1Label.textContent = "P1";
-      p2Wrap.style.display = "";
-      bestWrap.style.display = "none";
-    } else {
-      p1Label.textContent = "得分";
-      p2Wrap.style.display = "none";
-      bestWrap.style.display = "";
-    }
+    p1Label.textContent = playerCount > 1 ? "P1" : "得分";
+    p2Wrap.style.display = playerCount >= 2 ? "" : "none";
+    p3Wrap.style.display = playerCount >= 3 ? "" : "none";
+    p4Wrap.style.display = playerCount >= 4 ? "" : "none";
+    bestWrap.style.display = playerCount > 1 ? "none" : "";
   }
 
   function updateHud() {
     if (!players.length) return;
-    scoreEl.textContent = players[0].score;
-    if (players[1]) score2El.textContent = players[1].score;
+    var scoreEls = [scoreEl, score2El, score3El, score4El];
+    players.forEach(function (p, i) { if (scoreEls[i]) scoreEls[i].textContent = p.score; });
     levelEl.textContent = Math.floor(totalEaten / 5) + 1;
   }
 
@@ -375,16 +386,21 @@
     updateWeatherHud();
   }
 
-  function spawnFood() {
+  function freeCell() {
     var occ = {};
     players.forEach(function (p) {
       p.snake.forEach(function (s) { occ[s.x + "," + s.y] = true; });
     });
+    foods.forEach(function (f) { occ[f.x + "," + f.y] = true; });
     var pt;
     do {
       pt = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
     } while (occ[pt.x + "," + pt.y]);
     return pt;
+  }
+
+  function refillFoods() {
+    while (foods.length < targetFoodCount) foods.push(freeCell());
   }
 
   function currentInterval() {
@@ -402,10 +418,31 @@
   }
 
   // ---- 主逻辑 tick ----
+  function alivePlayers() {
+    return players.filter(function (p) { return p.alive; });
+  }
+
+  function eliminateDead() {
+    var out = [];
+    players.forEach(function (p, i) {
+      if (p.dying) {
+        p.alive = false; p.dying = false; p.snake = []; p.head = null;
+        if (mode !== "single") out.push("P" + (i + 1));
+      }
+    });
+    if (out.length) banner = { text: out.join("、") + " 被淘汰！", until: performance.now() + 2000 };
+  }
+
+  function endCheck() {
+    var need = mode === "single" ? 0 : 1;
+    if (alivePlayers().length <= need) { gameOver(); return true; }
+    return false;
+  }
+
   function tick() {
     if (state !== "running") return;
 
-    // 1. 计算每个存活玩家的下一步，判碰撞
+    // 1. 计算每个存活玩家的下一步，判碰撞（同回合同时判定）
     players.forEach(function (p) {
       if (!p.alive) return;
       var head = { x: p.snake[0].x + p.dir.x, y: p.snake[0].y + p.dir.y };
@@ -416,35 +453,42 @@
         if (q === p) return false;
         return q.snake.some(function (s) { return s.x === head.x && s.y === head.y; });
       });
-      if (hit) { p.alive = false; return; }
+      if (hit) { p.dying = true; return; }
       p.head = head;
     });
 
-    if (players.some(function (p) { return !p.alive; })) { gameOver(); return; }
+    // 2. 淘汰死亡玩家（蛇身消失，其余玩家继续）
+    eliminateDead();
 
-    // 2. 应用移动与吃食物
+    // 3. 应用移动与吃食物
     players.forEach(function (p) {
-      if (!p.head) return;
+      if (!p.alive || !p.head) return;
+      var ateIdx = -1;
+      for (var f = 0; f < foods.length; f++) {
+        if (foods[f].x === p.head.x && foods[f].y === p.head.y) { ateIdx = f; break; }
+      }
       p.snake.unshift(p.head);
-      if (p.head.x === food.x && p.head.y === food.y) {
+      if (ateIdx >= 0) {
         p.score++;
         totalEaten++;
         sfxEat();
         if (totalEaten % 5 === 0) sfxSpeedUp();
-        food = spawnFood();
+        foods.splice(ateIdx, 1);
+        refillFoods();
       } else {
         p.snake.pop();
       }
       p.head = null;
     });
 
-    // 3. 更新方向（雨天打滑：转向多延迟一拍生效）
+    // 4. 更新方向（雨天打滑：转向多延迟一拍生效）
     players.forEach(function (p) {
+      if (!p.alive) return;
       if (weather.type === "rain") { p.dir = p.lagged; p.lagged = p.nextDir; }
       else { p.dir = p.nextDir; }
     });
 
-    // 4. 大风：定期阵风推动所有蛇
+    // 5. 大风：定期阵风推动所有蛇
     if (weatherOn && weather.type === "wind") {
       gustCounter--;
       if (gustCounter <= 0) {
@@ -453,6 +497,9 @@
         if (state !== "running") return;
       }
     }
+
+    // 6. 结束判定：仅剩 1 名存活者（单人即死亡）
+    if (endCheck()) return;
 
     updateHud();
   }
@@ -463,11 +510,12 @@
     players.forEach(function (p) {
       if (!p.alive) return;
       var h = { x: p.snake[0].x + weather.windDir.x, y: p.snake[0].y + weather.windDir.y };
-      if (hitAnyBody(h, null, true)) { p.alive = false; return; }
+      if (hitAnyBody(h, null, true)) { p.dying = true; return; }
       p.snake.unshift(h);
       p.snake.pop();
     });
-    if (players.some(function (p) { return !p.alive; })) gameOver();
+    eliminateDead();
+    endCheck();
   }
 
   function gameOver() {
@@ -486,15 +534,15 @@
       }
       sub = "本局得分 " + s + " 分";
     } else {
-      var a = players[0], b = players[1];
-      var bothDead = !a.alive && !b.alive;
-      if (bothDead && a.score === b.score) {
-        title = "平局！";
+      var alive = alivePlayers();
+      if (alive.length === 1) {
+        title = "P" + (players.indexOf(alive[0]) + 1) + " 获胜！";
       } else {
-        var winner = (a.alive && !b.alive) ? a : (b.alive && !a.alive) ? b : (a.score >= b.score ? a : b);
-        title = "P" + (winner === a ? "1" : "2") + " 获胜！";
+        var maxScore = players.reduce(function (m, p) { return Math.max(m, p.score); }, 0);
+        var winners = players.filter(function (p) { return p.score === maxScore; });
+        title = winners.length === 1 ? "P" + (players.indexOf(winners[0]) + 1) + " 获胜！" : "平局！";
       }
-      sub = "P1 " + a.score + " 分 · P2 " + b.score + " 分";
+      sub = players.map(function (p, i) { return "P" + (i + 1) + " " + p.score + " 分"; }).join(" · ");
     }
     showOverlay(title, sub, "over");
   }
@@ -622,13 +670,13 @@
     if (state === "menu") return;
 
     // 食物（呼吸动效）
-    if (food) {
-      var fr = CELL / 2 - 2 + Math.sin(ts / 200) * 1.2;
-      ctx.fillStyle = "#ff7b72";
+    var fr = CELL / 2 - 2 + Math.sin(ts / 200) * 1.2;
+    ctx.fillStyle = "#ff7b72";
+    foods.forEach(function (f) {
       ctx.beginPath();
-      ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, Math.max(fr, 3), 0, Math.PI * 2);
+      ctx.arc(f.x * CELL + CELL / 2, f.y * CELL + CELL / 2, Math.max(fr, 3), 0, Math.PI * 2);
       ctx.fill();
-    }
+    });
 
     // 蛇（头亮尾暗）
     players.forEach(function (p) {
@@ -685,9 +733,11 @@
   function showMenu() {
     state = "menu";
     players = [];
-    food = null;
+    foods = [];
     p1Label.textContent = "得分";
     p2Wrap.style.display = "none";
+    p3Wrap.style.display = "none";
+    p4Wrap.style.display = "none";
     bestWrap.style.display = "";
     showOverlay("贪吃蛇", "选择模式开始", "menu");
   }
@@ -712,7 +762,7 @@
   }
 
   function primaryAction() {
-    if (state === "over") { startGame(mode); return; }
+    if (state === "over") { startGame(playerCount); return; }
     togglePause();
   }
 
@@ -720,6 +770,16 @@
     ArrowUp: DIRS.up, ArrowDown: DIRS.down, ArrowLeft: DIRS.left, ArrowRight: DIRS.right
   };
   var KEYS_P2 = { KeyW: DIRS.up, KeyS: DIRS.down, KeyA: DIRS.left, KeyD: DIRS.right };
+  var KEYS_P3 = { KeyI: DIRS.up, KeyK: DIRS.down, KeyJ: DIRS.left, KeyL: DIRS.right };
+  var KEYS_P4 = { Numpad8: DIRS.up, Numpad5: DIRS.down, Numpad4: DIRS.left, Numpad6: DIRS.right };
+
+  function keyDir(code) {
+    if (KEYS_P1[code]) return { idx: 0, d: KEYS_P1[code] };
+    if (KEYS_P2[code]) return { idx: playerCount > 1 ? 1 : 0, d: KEYS_P2[code] };
+    if (KEYS_P3[code]) return { idx: playerCount > 1 ? 2 : 0, d: KEYS_P3[code] };
+    if (KEYS_P4[code]) return { idx: playerCount > 1 ? 3 : 0, d: KEYS_P4[code] };
+    return null;
+  }
 
   document.addEventListener("keydown", function (e) {
     ensureAudio();
@@ -729,13 +789,10 @@
       return;
     }
     if (state !== "running" && state !== "paused") return;
-    var d = KEYS_P1[e.code];
-    if (d) { e.preventDefault(); applyDir(players[0], d); return; }
-    d = KEYS_P2[e.code];
-    if (d) {
-      e.preventDefault();
-      applyDir(mode === "versus" ? players[1] : players[0], d);
-    }
+    var kd = keyDir(e.code);
+    if (!kd) return;
+    e.preventDefault();
+    if (players[kd.idx]) applyDir(players[kd.idx], kd.d);
   });
 
   // 触屏：滑动转向 / 点按暂停或重开（控制 P1）
@@ -779,9 +836,11 @@
   });
 
   // 菜单 / 结束按钮
-  btnSingle.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame("single"); });
-  btnVersus.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame("versus"); });
-  restartBtn.addEventListener("click", function (e) { e.stopPropagation(); startGame(mode); });
+  btnSingle.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame(1); });
+  btnVersus.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame(2); });
+  btnTriple.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame(3); });
+  btnQuad.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame(4); });
+  restartBtn.addEventListener("click", function (e) { e.stopPropagation(); startGame(playerCount); });
   backMenuBtn.addEventListener("click", function (e) { e.stopPropagation(); showMenu(); });
 
   // 启动

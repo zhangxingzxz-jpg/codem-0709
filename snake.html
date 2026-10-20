@@ -22,17 +22,22 @@
   .hud {
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 18px;
     font-size: 15px;
     color: #9aa3b5;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   .hud b { color: #6ee7a0; font-size: 18px; margin-left: 6px; }
+  #p2wrap b { color: #6cb4f0; }
+  #weatherEl { font-size: 15px; }
   .board-wrap { position: relative; }
   canvas {
     background: #232736;
     border-radius: 10px;
     box-shadow: 0 8px 32px rgba(0,0,0,.45);
     display: block;
+    touch-action: none;
   }
   .overlay {
     position: absolute;
@@ -45,6 +50,7 @@
     background: rgba(15,17,26,.82);
     border-radius: 10px;
     text-align: center;
+    padding: 12px;
   }
   .overlay.show { display: flex; }
   .overlay .title { font-size: 24px; font-weight: 700; color: #ff7b72; }
@@ -61,7 +67,53 @@
     cursor: pointer;
   }
   button:hover { background: #5ad18f; }
+  .menu-row { display: none; gap: 12px; }
+  .ghost { background: #2c3142; color: #e8e8ef; }
+  .ghost:hover { background: #3d4357; }
+  .chk {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #9aa3b5;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .chk input { accent-color: #6ee7a0; }
   .tips { font-size: 13px; color: #6b7385; line-height: 1.7; text-align: center; }
+  .mute {
+    margin-top: 0;
+    padding: 4px 12px;
+    font-size: 16px;
+    background: #2c3142;
+    color: #e8e8ef;
+    border-radius: 8px;
+  }
+  .mute:hover { background: #3d4357; }
+  .dpad {
+    display: none;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-rows: repeat(3, 56px);
+    gap: 8px;
+  }
+  .dbtn {
+    margin: 0;
+    padding: 0;
+    font-size: 20px;
+    background: #2c3142;
+    color: #e8e8ef;
+    border-radius: 12px;
+    border: 1px solid #3d4357;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .dbtn:active { background: #3d4357; }
+  .dbtn.up { grid-area: 1 / 2; }
+  .dbtn.left { grid-area: 2 / 1; }
+  .dbtn.mid { grid-area: 2 / 2; font-size: 16px; }
+  .dbtn.right { grid-area: 2 / 3; }
+  .dbtn.down { grid-area: 3 / 2; }
+  @media (pointer: coarse) { .dpad { display: grid; } }
   kbd {
     background: #2c3142;
     border: 1px solid #3d4357;
@@ -74,21 +126,41 @@
 <body>
   <h1>贪吃蛇</h1>
   <div class="hud">
-    <span>得分<b id="score">0</b></span>
-    <span>最高分<b id="best">0</b></span>
+    <span><span id="p1label">得分</span><b id="score">0</b></span>
+    <span id="p2wrap" style="display:none">P2<b id="score2">0</b></span>
+    <span id="bestwrap">最高分<b id="best">0</b></span>
     <span>速度<b id="level">1</b></span>
+    <span id="weatherEl">☀️ 晴</span>
+    <button class="mute" id="mute" title="声音开关">🔊</button>
   </div>
   <div class="board-wrap">
     <canvas id="game" width="400" height="400"></canvas>
     <div class="overlay" id="overlay">
-      <div class="title" id="ovTitle">游戏结束</div>
-      <div class="sub" id="ovSub">按 空格 或点击按钮重新开始</div>
-      <button id="restart">再来一局</button>
+      <div class="title" id="ovTitle">贪吃蛇</div>
+      <div class="sub" id="ovSub">选择模式开始</div>
+      <div class="menu-row" id="menuGroup">
+        <button id="btnSingle">单人模式</button>
+        <button id="btnVersus">双人对战</button>
+      </div>
+      <label class="chk" id="weatherLabel">
+        <input type="checkbox" id="weatherToggle" checked /> 天气模式：晴 / 雨 / 雾 / 雪 / 风
+      </label>
+      <div class="menu-row" id="overGroup" style="display:none">
+        <button id="restart">再来一局</button>
+        <button id="backMenu" class="ghost">返回菜单</button>
+      </div>
     </div>
   </div>
+  <div class="dpad" id="dpad">
+    <button class="dbtn up" data-dir="up">▲</button>
+    <button class="dbtn left" data-dir="left">◀</button>
+    <button class="dbtn mid" id="pauseBtn">⏸</button>
+    <button class="dbtn right" data-dir="right">▶</button>
+    <button class="dbtn down" data-dir="down">▼</button>
+  </div>
   <div class="tips">
-    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ·
-    <kbd>空格</kbd> 暂停 / 继续
+    单人：<kbd>↑↓←→</kbd> / <kbd>WASD</kbd> / 滑动 / 虚拟键盘 移动，<kbd>空格</kbd> 或点击画面 暂停 ·
+    双人对战：P1 用方向键，P2 用 <kbd>WASD</kbd> · 天气模式随机切换五种天气
   </div>
 
 <script>
@@ -98,120 +170,336 @@
   var canvas = document.getElementById("game");
   var ctx = canvas.getContext("2d");
   var scoreEl = document.getElementById("score");
+  var score2El = document.getElementById("score2");
   var bestEl = document.getElementById("best");
   var levelEl = document.getElementById("level");
+  var weatherEl = document.getElementById("weatherEl");
   var overlay = document.getElementById("overlay");
   var ovTitle = document.getElementById("ovTitle");
   var ovSub = document.getElementById("ovSub");
+  var menuGroup = document.getElementById("menuGroup");
+  var overGroup = document.getElementById("overGroup");
+  var weatherLabel = document.getElementById("weatherLabel");
+  var weatherToggle = document.getElementById("weatherToggle");
+  var btnSingle = document.getElementById("btnSingle");
+  var btnVersus = document.getElementById("btnVersus");
   var restartBtn = document.getElementById("restart");
+  var backMenuBtn = document.getElementById("backMenu");
+  var p1Label = document.getElementById("p1label");
+  var p2Wrap = document.getElementById("p2wrap");
+  var bestWrap = document.getElementById("bestwrap");
 
+  var W = canvas.width, H = canvas.height;
   var COLS = 20, ROWS = 20, CELL = 20;          // 400x400 棋盘
   var BASE_INTERVAL = 150;                       // 初始每步毫秒
   var MIN_INTERVAL = 60;
   var SPEED_STEP = 10;                           // 每吃 5 个食物加速一档
+  var WEATHER_DURATION = 12000;                  // 每种天气持续 12 秒
 
-  var snake, dir, nextDir, food, score, best, interval, timer, state;
+  var DIRS = {
+    up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 }, right: { x: 1, y: 0 }
+  };
+  var ARROW = { up: "↑", down: "↓", left: "←", right: "→" };
+  var WEATHERS = {
+    sunny: { icon: "☀️", name: "晴", desc: "风平浪静", mult: 1 },
+    rain:  { icon: "🌧️", name: "雨", desc: "路滑，转向延迟一步", mult: 1 },
+    fog:   { icon: "🌫️", name: "雾", desc: "视野受限，小心行驶", mult: 1 },
+    snow:  { icon: "❄️", name: "雪", desc: "冰面，整体提速 25%", mult: 0.75 },
+    wind:  { icon: "🌬️", name: "风", desc: "阵风会推动蛇身", mult: 1 }
+  };
 
-  best = Number(localStorage.getItem("snake_best") || 0);
+  // ---- 运行状态 ----
+  var state = "menu";                            // menu | running | paused | over
+  var mode = "single";
+  var weatherOn = true;
+  var players = [];
+  var food = null;
+  var totalEaten = 0;
+  var weather = { type: "sunny", windDir: DIRS.right };
+  var weatherMs = 0;
+  var gustCounter = 0;
+  var gustFlashTs = -9999;
+  var banner = { text: "", until: 0 };
+  var lastTick = 0, lastFrame = 0;
+  var best = Number(localStorage.getItem("snake_best") || 0);
   bestEl.textContent = best;
 
-  function reset() {
-    snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
-    dir = { x: 1, y: 0 };
-    nextDir = dir;
-    score = 0;
-    interval = BASE_INTERVAL;
+  // ---- 音效（Web Audio 合成，无需音频文件）----
+  var audioCtx = null;
+  var muted = localStorage.getItem("snake_muted") === "1";
+  var muteBtn = document.getElementById("mute");
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+      } catch (e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function beep(freq, duration, type, volume, delay) {
+    if (muted || !audioCtx) return;
+    var t0 = audioCtx.currentTime + (delay || 0);
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = type || "square";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume || 0.12, t0);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.02);
+  }
+
+  function sfxEat() { beep(660, 0.07, "square", 0.1); beep(880, 0.08, "square", 0.09, 0.05); }
+  function sfxSpeedUp() { beep(520, 0.07, "triangle", 0.12, 0); beep(660, 0.07, "triangle", 0.12, 0.08); beep(880, 0.1, "triangle", 0.12, 0.16); }
+  function sfxOver() { beep(440, 0.15, "sawtooth", 0.1, 0); beep(330, 0.15, "sawtooth", 0.1, 0.14); beep(220, 0.3, "sawtooth", 0.1, 0.28); }
+  function sfxPause() { beep(520, 0.06, "triangle", 0.08); }
+  function sfxWeather() { beep(880, 0.08, "triangle", 0.1, 0); beep(1175, 0.12, "triangle", 0.1, 0.09); }
+  function sfxGust() { beep(180, 0.2, "sawtooth", 0.14, 0); beep(140, 0.22, "sawtooth", 0.12, 0.1); }
+
+  function renderMute() { muteBtn.textContent = muted ? "🔇" : "🔊"; }
+  muteBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    muted = !muted;
+    localStorage.setItem("snake_muted", muted ? "1" : "0");
+    renderMute();
+    if (!muted) { ensureAudio(); sfxPause(); }
+  });
+  renderMute();
+
+  // ---- 天气粒子 ----
+  var rainFx = [], snowFx = [], windFx = [];
+  (function initParticles() {
+    var i;
+    for (i = 0; i < 60; i++) rainFx.push({ x: Math.random() * W, y: Math.random() * H, v: 320 + Math.random() * 200 });
+    for (i = 0; i < 40; i++) snowFx.push({
+      baseX: Math.random() * W, y: Math.random() * H,
+      v: 40 + Math.random() * 40, r: 1 + Math.random() * 2,
+      phase: Math.random() * Math.PI * 2, freq: 0.6 + Math.random() * 0.8
+    });
+    for (i = 0; i < 24; i++) windFx.push({
+      x: Math.random() * W, y: Math.random() * H,
+      v: 260 + Math.random() * 200, len: 10 + Math.random() * 18
+    });
+  })();
+
+  var fogCv = document.createElement("canvas");
+  fogCv.width = W; fogCv.height = H;
+  var fogCtx = fogCv.getContext("2d");
+
+  // ---- 玩家 / 局面 ----
+  function makePlayer(snake, dir, color, rgbaPrefix) {
+    return { snake: snake, dir: dir, nextDir: dir, lagged: dir, score: 0, alive: true, head: null, color: color, rgba: rgbaPrefix };
+  }
+
+  function startGame(m) {
+    mode = m;
+    players = [makePlayer(
+      [{ x: 5, y: 10 }, { x: 4, y: 10 }, { x: 3, y: 10 }],
+      DIRS.right, "#6ee7a0", "rgba(110,231,160,"
+    )];
+    if (mode === "versus") {
+      players.push(makePlayer(
+        [{ x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }],
+        DIRS.left, "#6cb4f0", "rgba(108,180,240,"
+      ));
+    }
+    totalEaten = 0;
     food = spawnFood();
+    weatherMs = 0;
+    gustFlashTs = -9999;
+    if (weatherOn) setWeather(randomWeatherType(), true);
+    else { weather.type = "sunny"; weatherEl.textContent = "—"; }
     state = "running";
-    scoreEl.textContent = "0";
-    levelEl.textContent = "1";
-    overlay.classList.remove("show");
-    clearInterval(timer);
-    timer = setInterval(tick, interval);
+    lastTick = 0;
+    setupHudForMode();
+    updateHud();
+    hideOverlay();
+  }
+
+  function setupHudForMode() {
+    if (mode === "versus") {
+      p1Label.textContent = "P1";
+      p2Wrap.style.display = "";
+      bestWrap.style.display = "none";
+    } else {
+      p1Label.textContent = "得分";
+      p2Wrap.style.display = "none";
+      bestWrap.style.display = "";
+    }
+  }
+
+  function updateHud() {
+    if (!players.length) return;
+    scoreEl.textContent = players[0].score;
+    if (players[1]) score2El.textContent = players[1].score;
+    levelEl.textContent = Math.floor(totalEaten / 5) + 1;
+  }
+
+  function updateWeatherHud() {
+    if (!weatherOn) { weatherEl.textContent = "—"; return; }
+    var w = WEATHERS[weather.type];
+    weatherEl.textContent = w.icon + " " + w.name +
+      (weather.type === "wind" ? " " + ARROW[dirName(weather.windDir)] : "");
+  }
+
+  function dirName(d) {
+    if (d.y === -1) return "up";
+    if (d.y === 1) return "down";
+    if (d.x === -1) return "left";
+    return "right";
+  }
+
+  function randomDir() {
+    var names = ["up", "down", "left", "right"];
+    return DIRS[names[Math.floor(Math.random() * 4)]];
+  }
+
+  function randomWeatherType() {
+    var keys = Object.keys(WEATHERS).filter(function (k) { return k !== weather.type; });
+    return keys[Math.floor(Math.random() * keys.length)];
+  }
+
+  function setWeather(type, silent) {
+    weather.type = type;
+    weather.windDir = randomDir();
+    weatherMs = 0;
+    gustCounter = 8 + Math.floor(Math.random() * 5);
+    banner = { text: WEATHERS[type].icon + " " + WEATHERS[type].name + " · " + WEATHERS[type].desc, until: performance.now() + 2600 };
+    if (!silent) sfxWeather();
+    updateWeatherHud();
   }
 
   function spawnFood() {
-    var occupied = {};
-    snake.forEach(function (s) { occupied[s.x + "," + s.y] = true; });
-    var p;
+    var occ = {};
+    players.forEach(function (p) {
+      p.snake.forEach(function (s) { occ[s.x + "," + s.y] = true; });
+    });
+    var pt;
     do {
-      p = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
-    } while (occupied[p.x + "," + p.y]);
-    return p;
+      pt = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    } while (occ[pt.x + "," + pt.y]);
+    return pt;
   }
 
+  function currentInterval() {
+    var lvl = Math.floor(totalEaten / 5);
+    var base = Math.max(BASE_INTERVAL - lvl * SPEED_STEP, MIN_INTERVAL);
+    return base * WEATHERS[weather.type].mult;
+  }
+
+  function hitAnyBody(h, exceptPlayer, includeSelf) {
+    if (h.x < 0 || h.y < 0 || h.x >= COLS || h.y >= ROWS) return true;
+    return players.some(function (q) {
+      if (q === exceptPlayer && !includeSelf) return false;
+      return q.snake.some(function (s) { return s.x === h.x && s.y === h.y; });
+    });
+  }
+
+  // ---- 主逻辑 tick ----
   function tick() {
     if (state !== "running") return;
 
-    dir = nextDir;
-    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    // 1. 计算每个存活玩家的下一步，判碰撞
+    players.forEach(function (p) {
+      if (!p.alive) return;
+      var head = { x: p.snake[0].x + p.dir.x, y: p.snake[0].y + p.dir.y };
+      var hit = false;
+      if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) hit = true;
+      if (!hit) hit = p.snake.some(function (s) { return s.x === head.x && s.y === head.y; });
+      if (!hit) hit = players.some(function (q) {
+        if (q === p) return false;
+        return q.snake.some(function (s) { return s.x === head.x && s.y === head.y; });
+      });
+      if (hit) { p.alive = false; return; }
+      p.head = head;
+    });
 
-    // 撞墙或撞自己
-    var hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
-    var hitSelf = snake.some(function (s) { return s.x === head.x && s.y === head.y; });
-    if (hitWall || hitSelf) {
-      gameOver();
-      return;
-    }
+    if (players.some(function (p) { return !p.alive; })) { gameOver(); return; }
 
-    snake.unshift(head);
-
-    if (head.x === food.x && head.y === food.y) {
-      score++;
-      scoreEl.textContent = score;
-      if (score % 5 === 0 && interval - SPEED_STEP >= MIN_INTERVAL) {
-        interval -= SPEED_STEP;
-        clearInterval(timer);
-        timer = setInterval(tick, interval);
+    // 2. 应用移动与吃食物
+    players.forEach(function (p) {
+      if (!p.head) return;
+      p.snake.unshift(p.head);
+      if (p.head.x === food.x && p.head.y === food.y) {
+        p.score++;
+        totalEaten++;
+        sfxEat();
+        if (totalEaten % 5 === 0) sfxSpeedUp();
+        food = spawnFood();
+      } else {
+        p.snake.pop();
       }
-      levelEl.textContent = Math.floor((BASE_INTERVAL - interval) / SPEED_STEP) + 1;
-      food = spawnFood();
-    } else {
-      snake.pop();
+      p.head = null;
+    });
+
+    // 3. 更新方向（雨天打滑：转向多延迟一拍生效）
+    players.forEach(function (p) {
+      if (weather.type === "rain") { p.dir = p.lagged; p.lagged = p.nextDir; }
+      else { p.dir = p.nextDir; }
+    });
+
+    // 4. 大风：定期阵风推动所有蛇
+    if (weatherOn && weather.type === "wind") {
+      gustCounter--;
+      if (gustCounter <= 0) {
+        gust();
+        gustCounter = 8 + Math.floor(Math.random() * 5);
+        if (state !== "running") return;
+      }
     }
-    draw();
+
+    updateHud();
+  }
+
+  function gust() {
+    sfxGust();
+    gustFlashTs = performance.now();
+    players.forEach(function (p) {
+      if (!p.alive) return;
+      var h = { x: p.snake[0].x + weather.windDir.x, y: p.snake[0].y + weather.windDir.y };
+      if (hitAnyBody(h, null, true)) { p.alive = false; return; }
+      p.snake.unshift(h);
+      p.snake.pop();
+    });
+    if (players.some(function (p) { return !p.alive; })) gameOver();
   }
 
   function gameOver() {
     state = "over";
-    clearInterval(timer);
-    if (score > best) {
-      best = score;
-      localStorage.setItem("snake_best", String(best));
-      bestEl.textContent = best;
-      ovTitle.textContent = "新纪录！";
-      ovSub.textContent = "本局得分 " + score + " 分";
+    sfxOver();
+    var title, sub;
+    if (mode === "single") {
+      var s = players[0].score;
+      if (s > best) {
+        best = s;
+        localStorage.setItem("snake_best", String(best));
+        bestEl.textContent = best;
+        title = "新纪录！";
+      } else {
+        title = "游戏结束";
+      }
+      sub = "本局得分 " + s + " 分";
     } else {
-      ovTitle.textContent = "游戏结束";
-      ovSub.textContent = "本局得分 " + score + " 分";
+      var a = players[0], b = players[1];
+      var bothDead = !a.alive && !b.alive;
+      if (bothDead && a.score === b.score) {
+        title = "平局！";
+      } else {
+        var winner = (a.alive && !b.alive) ? a : (b.alive && !a.alive) ? b : (a.score >= b.score ? a : b);
+        title = "P" + (winner === a ? "1" : "2") + " 获胜！";
+      }
+      sub = "P1 " + a.score + " 分 · P2 " + b.score + " 分";
     }
-    overlay.classList.add("show");
+    showOverlay(title, sub, "over");
   }
 
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 网格
-    ctx.strokeStyle = "rgba(255,255,255,0.04)";
-    for (var i = 1; i < COLS; i++) {
-      ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, ROWS * CELL); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(COLS * CELL, i * CELL); ctx.stroke();
-    }
-
-    // 食物
-    ctx.fillStyle = "#ff7b72";
-    ctx.beginPath();
-    ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 蛇身（头亮尾暗）
-    snake.forEach(function (s, idx) {
-      var t = idx / Math.max(snake.length - 1, 1);
-      ctx.fillStyle = idx === 0 ? "#6ee7a0" : "rgba(110,231,160," + (1 - t * 0.6).toFixed(2) + ")";
-      roundRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2, 5);
-    });
-  }
-
+  // ---- 渲染 ----
   function roundRect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -223,42 +511,282 @@
     ctx.fill();
   }
 
-  var KEY_MAP = {
-    ArrowUp: { x: 0, y: -1 },  KeyW: { x: 0, y: -1 },
-    ArrowDown: { x: 0, y: 1 }, KeyS: { x: 0, y: 1 },
-    ArrowLeft: { x: -1, y: 0 }, KeyA: { x: -1, y: 0 },
-    ArrowRight: { x: 1, y: 0 }, KeyD: { x: 1, y: 0 }
-  };
-
-  document.addEventListener("keydown", function (e) {
-    // 空格：暂停 / 继续 / 重开
-    if (e.code === "Space") {
-      e.preventDefault();
-      if (state === "over") { reset(); return; }
-      if (state === "running") {
-        state = "paused";
-        ovTitle.textContent = "已暂停";
-        ovSub.textContent = "按 空格 继续";
-        overlay.classList.add("show");
-      } else if (state === "paused") {
-        state = "running";
-        overlay.classList.remove("show");
+  function updateParticles(dt, ts) {
+    var s = dt / 1000, i, p;
+    if (weatherOn && weather.type === "rain") {
+      for (i = 0; i < rainFx.length; i++) {
+        p = rainFx[i];
+        p.y += p.v * s;
+        if (p.y > H + 20) { p.y = -20; p.x = Math.random() * W; }
       }
-      return;
+    }
+    if (weatherOn && weather.type === "snow") {
+      var t = ts / 1000;
+      for (i = 0; i < snowFx.length; i++) {
+        p = snowFx[i];
+        p.y += p.v * s;
+        p.baseX += Math.sin(t * p.freq + p.phase) * 12 * s;
+        if (p.y > H + 6) { p.y = -6; p.baseX = Math.random() * W; }
+        if (p.baseX > W + 10) p.baseX = -10;
+        if (p.baseX < -10) p.baseX = W + 10;
+      }
+    }
+    if (weatherOn && weather.type === "wind") {
+      var d = weather.windDir;
+      for (i = 0; i < windFx.length; i++) {
+        p = windFx[i];
+        p.x += d.x * p.v * s;
+        p.y += d.y * p.v * s;
+        if (p.x > W + 30) p.x = -30;
+        if (p.x < -30) p.x = W + 30;
+        if (p.y > H + 30) p.y = -30;
+        if (p.y < -30) p.y = H + 30;
+      }
+    }
+  }
+
+  function drawWeatherFx(ts) {
+    var i, p;
+    if (!weatherOn) return;
+    if (weather.type === "sunny") {
+      ctx.fillStyle = "rgba(255,220,120,0.03)";
+      ctx.fillRect(0, 0, W, H);
+    } else if (weather.type === "rain") {
+      ctx.strokeStyle = "rgba(150,180,230,0.35)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var r = 0; r < rainFx.length; r++) {
+        p = rainFx[r];
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - 2, p.y - 10);
+      }
+      ctx.stroke();
+    } else if (weather.type === "snow") {
+      ctx.fillStyle = "rgba(240,246,255,0.8)";
+      for (var s2 = 0; s2 < snowFx.length; s2++) {
+        p = snowFx[s2];
+        ctx.beginPath();
+        ctx.arc(p.baseX, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (weather.type === "wind") {
+      var d = weather.windDir;
+      ctx.strokeStyle = "rgba(190,210,235,0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (var w = 0; w < windFx.length; w++) {
+        p = windFx[w];
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - d.x * p.len, p.y - d.y * p.len);
+      }
+      ctx.stroke();
+    } else if (weather.type === "fog") {
+      fogCtx.clearRect(0, 0, W, H);
+      fogCtx.fillStyle = "rgba(12,14,20,0.93)";
+      fogCtx.fillRect(0, 0, W, H);
+      fogCtx.globalCompositeOperation = "destination-out";
+      players.forEach(function (p) {
+        if (!p.alive) return;
+        var cx = p.snake[0].x * CELL + CELL / 2, cy = p.snake[0].y * CELL + CELL / 2;
+        var r = CELL * 5.5;
+        var g = fogCtx.createRadialGradient(cx, cy, CELL * 1.2, cx, cy, r);
+        g.addColorStop(0, "rgba(0,0,0,1)");
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        fogCtx.fillStyle = g;
+        fogCtx.beginPath();
+        fogCtx.arc(cx, cy, r, 0, Math.PI * 2);
+        fogCtx.fill();
+      });
+      fogCtx.globalCompositeOperation = "source-over";
+      ctx.drawImage(fogCv, 0, 0);
     }
 
-    var d = KEY_MAP[e.code];
-    if (!d) return;
-    e.preventDefault();
-    // 禁止 180 度掉头
-    if (d.x === -dir.x && d.y === -dir.y) return;
-    nextDir = d;
+    // 阵风闪白
+    var since = ts - gustFlashTs;
+    if (since < 300) {
+      ctx.fillStyle = "rgba(255,255,255," + (0.14 * (1 - since / 300)).toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function draw(ts) {
+    ctx.clearRect(0, 0, W, H);
+
+    // 网格
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    for (var i = 1; i < COLS; i++) {
+      ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, ROWS * CELL); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(COLS * CELL, i * CELL); ctx.stroke();
+    }
+
+    if (state === "menu") return;
+
+    // 食物（呼吸动效）
+    if (food) {
+      var fr = CELL / 2 - 2 + Math.sin(ts / 200) * 1.2;
+      ctx.fillStyle = "#ff7b72";
+      ctx.beginPath();
+      ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, Math.max(fr, 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 蛇（头亮尾暗）
+    players.forEach(function (p) {
+      p.snake.forEach(function (s, idx) {
+        var t = idx / Math.max(p.snake.length - 1, 1);
+        ctx.fillStyle = idx === 0 ? p.color : p.rgba + (1 - t * 0.6).toFixed(2) + ")";
+        roundRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2, 5);
+      });
+    });
+
+    // 天气特效与遮罩
+    drawWeatherFx(ts);
+
+    // 天气切换横幅
+    if (banner.text && ts < banner.until) {
+      var alpha = Math.min(1, (banner.until - ts) / 600);
+      ctx.font = "bold 15px 'PingFang SC', 'Microsoft YaHei', Arial";
+      var tw = ctx.measureText(banner.text).width;
+      var bx = (W - tw) / 2 - 14;
+      ctx.fillStyle = "rgba(15,17,26," + (0.75 * alpha).toFixed(3) + ")";
+      roundRect(bx, 16, tw + 28, 30, 15);
+      ctx.fillStyle = "rgba(232,232,239," + alpha.toFixed(3) + ")";
+      ctx.textBaseline = "middle";
+      ctx.fillText(banner.text, bx + 14, 32);
+      ctx.textBaseline = "alphabetic";
+    }
+  }
+
+  // ---- 主循环 ----
+  function frame(ts) {
+    var dt = Math.min(ts - lastFrame, 100);
+    lastFrame = ts;
+    if (state === "running") {
+      weatherMs += dt;
+      if (weatherOn && weatherMs > WEATHER_DURATION) setWeather(randomWeatherType(), false);
+      if (ts - lastTick >= currentInterval()) { lastTick = ts; tick(); }
+    }
+    updateParticles(dt, ts);
+    draw(ts);
+    requestAnimationFrame(frame);
+  }
+
+  // ---- 覆盖层 ----
+  function showOverlay(title, sub, group) {
+    ovTitle.textContent = title;
+    ovSub.textContent = sub;
+    menuGroup.style.display = group === "menu" ? "flex" : "none";
+    weatherLabel.style.display = group === "menu" ? "inline-flex" : "none";
+    overGroup.style.display = group === "over" ? "flex" : "none";
+    overlay.classList.add("show");
+  }
+  function hideOverlay() { overlay.classList.remove("show"); }
+
+  function showMenu() {
+    state = "menu";
+    players = [];
+    food = null;
+    p1Label.textContent = "得分";
+    p2Wrap.style.display = "none";
+    bestWrap.style.display = "";
+    showOverlay("贪吃蛇", "选择模式开始", "menu");
+  }
+
+  // ---- 输入 ----
+  function applyDir(p, d) {
+    if (!p || !d || !p.alive) return;
+    if (d.x === -p.dir.x && d.y === -p.dir.y) return;   // 禁止 180 度掉头
+    p.nextDir = d;
+  }
+
+  function togglePause() {
+    if (state === "running") {
+      state = "paused";
+      showOverlay("已暂停", "按 空格 或点击画面继续", null);
+      sfxPause();
+    } else if (state === "paused") {
+      state = "running";
+      hideOverlay();
+      sfxPause();
+    }
+  }
+
+  function primaryAction() {
+    if (state === "over") { startGame(mode); return; }
+    togglePause();
+  }
+
+  var KEYS_P1 = {
+    ArrowUp: DIRS.up, ArrowDown: DIRS.down, ArrowLeft: DIRS.left, ArrowRight: DIRS.right
+  };
+  var KEYS_P2 = { KeyW: DIRS.up, KeyS: DIRS.down, KeyA: DIRS.left, KeyD: DIRS.right };
+
+  document.addEventListener("keydown", function (e) {
+    ensureAudio();
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (state !== "menu") primaryAction();
+      return;
+    }
+    if (state !== "running" && state !== "paused") return;
+    var d = KEYS_P1[e.code];
+    if (d) { e.preventDefault(); applyDir(players[0], d); return; }
+    d = KEYS_P2[e.code];
+    if (d) {
+      e.preventDefault();
+      applyDir(mode === "versus" ? players[1] : players[0], d);
+    }
   });
 
-  restartBtn.addEventListener("click", reset);
+  // 触屏：滑动转向 / 点按暂停或重开（控制 P1）
+  var touchX = 0, touchY = 0;
+  canvas.addEventListener("touchstart", function (e) {
+    ensureAudio();
+    var t = e.changedTouches[0];
+    touchX = t.clientX;
+    touchY = t.clientY;
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener("touchend", function (e) {
+    if (state === "menu") return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - touchX, dy = t.clientY - touchY;
+    if (Math.abs(dx) < 20 && Math.abs(dy) < 20) { primaryAction(); return; }
+    applyDir(players[0], Math.abs(dx) > Math.abs(dy)
+      ? { x: dx > 0 ? 1 : -1, y: 0 }
+      : { x: 0, y: dy > 0 ? 1 : -1 });
+  }, { passive: false });
 
-  reset();
-  draw();
+  // 桌面：点击画面暂停 / 重开
+  canvas.addEventListener("click", function () { ensureAudio(); if (state !== "menu") primaryAction(); });
+  overlay.addEventListener("click", function () { ensureAudio(); if (state !== "menu" && state !== "over") primaryAction(); });
+
+  // 虚拟方向键（触屏设备显示，控制 P1）
+  var DPAD_MAP = { up: DIRS.up, down: DIRS.down, left: DIRS.left, right: DIRS.right };
+  Array.prototype.forEach.call(document.querySelectorAll(".dbtn[data-dir]"), function (btn) {
+    var handler = function (e) {
+      ensureAudio();
+      applyDir(players[0], DPAD_MAP[btn.getAttribute("data-dir")]);
+      e.preventDefault();
+    };
+    btn.addEventListener("touchstart", handler, { passive: false });
+    btn.addEventListener("mousedown", handler);
+  });
+  document.getElementById("pauseBtn").addEventListener("click", function () {
+    ensureAudio();
+    if (state !== "menu") primaryAction();
+  });
+
+  // 菜单 / 结束按钮
+  btnSingle.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame("single"); });
+  btnVersus.addEventListener("click", function () { ensureAudio(); weatherOn = weatherToggle.checked; startGame("versus"); });
+  restartBtn.addEventListener("click", function (e) { e.stopPropagation(); startGame(mode); });
+  backMenuBtn.addEventListener("click", function (e) { e.stopPropagation(); showMenu(); });
+
+  // 启动
+  showMenu();
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>
